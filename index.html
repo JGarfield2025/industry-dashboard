@@ -90,6 +90,13 @@
   .badge-terminated { background: rgba(231,76,60,0.1); color: #c0392b; }
   .badge-other { background: rgba(107,114,148,0.1); color: #6b7294; }
 
+  .col-filter-row th { background: #1e2278; padding: 6px 8px; }
+  .col-filter { width: 100%; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.15); color: #fff; padding: 4px 6px; border-radius: 4px; font-size: 11px; font-family: 'Source Sans 3', sans-serif; }
+  .col-filter::placeholder { color: rgba(255,255,255,0.45); }
+  .col-filter:focus { outline: none; background: rgba(255,255,255,0.18); border-color: var(--gold); }
+  select.col-filter { cursor: pointer; }
+  select.col-filter option { background: #171C73; color: #fff; }
+
   .table-wrap::-webkit-scrollbar { width: 6px; }
   .table-wrap::-webkit-scrollbar-track { background: var(--surface2); }
   .table-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
@@ -136,6 +143,10 @@
   <div class="filter-group">
     <label>Search</label>
     <input type="text" id="search" placeholder="Account name...">
+  </div>
+  <div class="filter-group">
+    <label>Industry</label>
+    <select id="filter-industry"><option value="">All Industries</option></select>
   </div>
   <div class="filter-group">
     <label>State</label>
@@ -191,6 +202,17 @@
           <th onclick="sortTable('Effective_Date')">Effective <span class="sort-arrow">&#9650;</span></th>
           <th onclick="sortTable('Contract_Renewal_Date')">Renewal <span class="sort-arrow">&#9650;</span></th>
         </tr>
+        <tr class="col-filter-row">
+          <th><input type="text" class="col-filter" id="cf-name" placeholder="Filter..."></th>
+          <th><select class="col-filter" id="cf-industry"><option value="">All</option></select></th>
+          <th><select class="col-filter" id="cf-state"><option value="">All</option></select></th>
+          <th><select class="col-filter" id="cf-type"><option value="">All</option></select></th>
+          <th><select class="col-filter" id="cf-owner"><option value="">All</option></select></th>
+          <th><input type="text" class="col-filter" id="cf-emp" placeholder="Min..."></th>
+          <th><input type="text" class="col-filter" id="cf-elig" placeholder="Min..."></th>
+          <th><input type="text" class="col-filter" id="cf-eff" placeholder="YYYY-MM..."></th>
+          <th><input type="text" class="col-filter" id="cf-renew" placeholder="YYYY-MM..."></th>
+        </tr>
       </thead>
       <tbody id="table-body"></tbody>
     </table>
@@ -222,17 +244,44 @@ const TYPE_BADGES = {
 
 document.getElementById('gen-date').textContent = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
+function getColFilters() {
+  return {
+    name: (document.getElementById('cf-name')?.value || '').toLowerCase(),
+    industry: document.getElementById('cf-industry')?.value || '',
+    state: document.getElementById('cf-state')?.value || '',
+    type: document.getElementById('cf-type')?.value || '',
+    owner: document.getElementById('cf-owner')?.value || '',
+    emp: parseInt(document.getElementById('cf-emp')?.value) || 0,
+    elig: parseInt(document.getElementById('cf-elig')?.value) || 0,
+    eff: (document.getElementById('cf-eff')?.value || '').toLowerCase(),
+    renew: (document.getElementById('cf-renew')?.value || '').toLowerCase(),
+  };
+}
+
 function getFiltered() {
   const search = document.getElementById('search').value.toLowerCase();
+  const industry = document.getElementById('filter-industry').value;
   const state = document.getElementById('filter-state').value;
   const type = document.getElementById('filter-type').value;
   const owner = document.getElementById('filter-owner').value;
+  const cf = getColFilters();
   return RAW_DATA.filter(r => {
     if (activeIndustry && r.Industry !== activeIndustry) return false;
     if (search && !r.Account_Name.toLowerCase().includes(search)) return false;
+    if (industry && r.Industry !== industry) return false;
     if (state && r.Billing_State !== state) return false;
     if (type && r.Account_Type !== type) return false;
     if (owner && r.Owner !== owner) return false;
+    // Column filters
+    if (cf.name && !r.Account_Name.toLowerCase().includes(cf.name)) return false;
+    if (cf.industry && r.Industry !== cf.industry) return false;
+    if (cf.state && r.Billing_State !== cf.state) return false;
+    if (cf.type && r.Account_Type !== cf.type) return false;
+    if (cf.owner && r.Owner !== cf.owner) return false;
+    if (cf.emp && (r.Number_of_Employees || 0) < cf.emp) return false;
+    if (cf.elig && (r.Eligible_Count || 0) < cf.elig) return false;
+    if (cf.eff && !(r.Effective_Date || '').toLowerCase().startsWith(cf.eff)) return false;
+    if (cf.renew && !(r.Contract_Renewal_Date || '').toLowerCase().startsWith(cf.renew)) return false;
     return true;
   });
 }
@@ -244,13 +293,20 @@ function count(arr, key) {
 }
 
 function populateDropdowns() {
+  const industries = [...new Set(RAW_DATA.map(r=>r.Industry).filter(Boolean))].sort();
   const states = [...new Set(RAW_DATA.map(r=>r.Billing_State).filter(Boolean))].sort();
   const types = [...new Set(RAW_DATA.map(r=>r.Account_Type).filter(Boolean))].sort();
   const owners = [...new Set(RAW_DATA.map(r=>r.Owner).filter(Boolean))].sort();
-  const addOpts = (id, vals) => { const el = document.getElementById(id); vals.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = v; el.appendChild(o); }); };
+  const addOpts = (id, vals) => { const el = document.getElementById(id); if (!el) return; vals.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = v; el.appendChild(o); }); };
+  addOpts('filter-industry', industries);
   addOpts('filter-state', states);
   addOpts('filter-type', types);
   addOpts('filter-owner', owners);
+  // Column filter dropdowns
+  addOpts('cf-industry', industries);
+  addOpts('cf-state', states);
+  addOpts('cf-type', types);
+  addOpts('cf-owner', owners);
 }
 
 function renderKPIs() {
@@ -271,15 +327,21 @@ function renderKPIs() {
 
 function toggleIndustry(ind) {
   activeIndustry = activeIndustry === ind ? null : ind;
+  document.getElementById('filter-industry').value = activeIndustry || '';
   render();
 }
 
 function resetFilters() {
   activeIndustry = null;
   document.getElementById('search').value = '';
+  document.getElementById('filter-industry').value = '';
   document.getElementById('filter-state').value = '';
   document.getElementById('filter-type').value = '';
   document.getElementById('filter-owner').value = '';
+  // Clear column filters
+  ['cf-name','cf-industry','cf-state','cf-type','cf-owner','cf-emp','cf-elig','cf-eff','cf-renew'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
   render();
 }
 
@@ -405,9 +467,17 @@ async function checkPassword() {
 
 function initDashboard() {
   populateDropdowns();
-  ['search','filter-state','filter-type','filter-owner'].forEach(id =>
+  // Top-bar filters
+  ['search','filter-industry','filter-state','filter-type','filter-owner'].forEach(id =>
     document.getElementById(id).addEventListener(id==='search'?'input':'change', render)
   );
+  // Column filters
+  ['cf-name','cf-emp','cf-elig','cf-eff','cf-renew'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.addEventListener('input', render);
+  });
+  ['cf-industry','cf-state','cf-type','cf-owner'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.addEventListener('change', render);
+  });
   render();
 }
 
