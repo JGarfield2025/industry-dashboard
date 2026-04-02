@@ -92,7 +92,12 @@ log "Dashboard rebuilt. Pushing to GitHub..."
 # Step 3: Commit and push
 cd "$REPO_DIR"
 git add index.html
-git commit -m "Daily refresh: $(date +%Y-%m-%d)"
-git push origin main
+if git diff --cached --quiet; then
+  log "No data changes detected — skipping commit"
+else
+  git commit -m "Daily refresh: $(date +%Y-%m-%d)"
+  git push origin main
+  log "Pushed updated dashboard to GitHub"
+fi
 
 log "Industry dashboard refresh completed successfully"
