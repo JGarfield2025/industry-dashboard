@@ -100,6 +100,45 @@
   .table-wrap::-webkit-scrollbar { width: 6px; }
   .table-wrap::-webkit-scrollbar-track { background: var(--surface2); }
   .table-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  tbody tr { cursor: pointer; }
+
+  /* Slide-out detail panel */
+  .detail-overlay { display: none; position: fixed; inset: 0; z-index: 500; }
+  .detail-overlay.open { display: flex; }
+  .detail-backdrop { flex: 1; background: rgba(0,0,0,0.35); }
+  .detail-panel { width: 560px; max-width: 90vw; background: #fff; height: 100vh; overflow-y: auto; box-shadow: -8px 0 30px rgba(0,0,0,0.15); padding: 0; animation: slideIn 0.25s ease-out; }
+  @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+  .dp-header { background: linear-gradient(135deg, #171C73, #720de3); padding: 24px 28px; color: #fff; position: relative; }
+  .dp-close { position: absolute; top: 16px; right: 20px; background: rgba(255,255,255,0.15); border: none; color: #fff; width: 32px; height: 32px; border-radius: 8px; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .dp-close:hover { background: rgba(255,255,255,0.25); }
+  .dp-title { font-family: 'Inter', sans-serif; font-size: 18px; font-weight: 700; margin-bottom: 4px; padding-right: 40px; }
+  .dp-subtitle { font-size: 13px; opacity: 0.75; }
+  .dp-body { padding: 24px 28px; }
+  .dp-section { margin-bottom: 24px; }
+  .dp-section-title { font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 12px; }
+  .dp-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 24px; }
+  .dp-stat { background: var(--surface2); border-radius: 10px; padding: 14px 16px; text-align: center; }
+  .dp-stat .dp-stat-val { font-family: 'Inter', sans-serif; font-size: 22px; font-weight: 700; color: var(--accent); }
+  .dp-stat .dp-stat-lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; margin-top: 2px; }
+  .dp-bar-list { list-style: none; }
+  .dp-bar-item { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 13px; }
+  .dp-bar-label { width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+  .dp-bar-track { flex: 1; height: 8px; background: var(--surface2); border-radius: 4px; overflow: hidden; }
+  .dp-bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
+  .dp-bar-count { width: 40px; text-align: right; font-weight: 600; font-family: 'Inter', sans-serif; color: var(--text); font-size: 12px; }
+  .dp-acct-list { list-style: none; }
+  .dp-acct-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .dp-acct-item:last-child { border-bottom: none; }
+  .dp-acct-name { font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; }
+  .dp-acct-meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+  /* Account detail panel specifics */
+  .dp-field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+  .dp-field { padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .dp-field:nth-child(odd) { padding-right: 16px; }
+  .dp-field:nth-child(even) { padding-left: 16px; border-left: 1px solid var(--border); }
+  .dp-field-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; font-family: 'Inter', sans-serif; font-weight: 600; }
+  .dp-field-value { font-size: 14px; color: var(--text); margin-top: 2px; font-weight: 500; }
 
   @media (max-width: 1024px) {
     .kpi-bar { grid-template-columns: repeat(3, 1fr); }
@@ -317,10 +356,10 @@ function renderKPIs() {
     const filtered = getFiltered().filter(r => r.Industry === ind);
     const isActive = activeIndustry === ind;
     const elig = subset.reduce((s,r) => s + (r.Eligible_Count||0), 0);
-    return `<div class="kpi ${isActive ? 'active' : ''}" onclick="toggleIndustry('${ind}')">
+    return `<div class="kpi ${isActive ? 'active' : ''}" onclick="toggleIndustry('${ind}')" ondblclick="event.stopPropagation();openIndustryDetail('${ind}')">
       <div class="label">${ind}</div>
       <div class="value">${filtered.length.toLocaleString()}</div>
-      <div class="detail">${elig > 0 ? elig.toLocaleString() + ' eligible' : subset.length.toLocaleString() + ' total'}</div>
+      <div class="detail">${elig > 0 ? elig.toLocaleString() + ' eligible' : subset.length.toLocaleString() + ' total'}<span style="float:right;opacity:0.5;font-size:11px;cursor:pointer" onclick="event.stopPropagation();openIndustryDetail('${ind}')">Details &rarr;</span></div>
     </div>`;
   }).join('');
 }
@@ -351,6 +390,7 @@ function typeBadge(t) {
   return `<span class="badge ${cls}">${t}</span>`;
 }
 
+let lastShown = [];
 function renderTable(data) {
   data.sort((a,b) => {
     let va = a[sortCol] ?? '', vb = b[sortCol] ?? '';
@@ -358,10 +398,10 @@ function renderTable(data) {
     va = String(va).toLowerCase(); vb = String(vb).toLowerCase();
     return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
   });
-  const shown = data.slice(0, 500);
-  document.getElementById('row-count').textContent = `Showing ${Math.min(500,data.length).toLocaleString()} of ${data.length.toLocaleString()} accounts`;
-  document.getElementById('table-body').innerHTML = shown.map(r =>
-    `<tr>
+  lastShown = data.slice(0, 500);
+  document.getElementById('row-count').textContent = `Showing ${lastShown.length.toLocaleString()} of ${data.length.toLocaleString()} accounts`;
+  document.getElementById('table-body').innerHTML = lastShown.map((r,i) =>
+    `<tr onclick="openAccountDetail(lastShown[${i}])" title="Click for details">
       <td title="${r.Account_Name}">${r.Account_Name}</td>
       <td>${r.Industry}</td>
       <td>${r.Billing_State}</td>
@@ -393,7 +433,7 @@ function renderCharts(data) {
   updateChart('chart-industry', 'doughnut', {
     labels: indData.map(e=>e[0]),
     datasets: [{ data: indData.map(e=>e[1]), backgroundColor: indData.map(e=>COLORS[e[0]]||'#64748b'), borderWidth: 0 }]
-  }, { ...chartDefaults, cutout: '60%', plugins: { legend: { display: true, position: 'bottom', labels: { padding: 14, usePointStyle: true, pointStyle: 'circle', font: { size: 11 } } } } });
+  }, { ...chartDefaults, cutout: '60%', onClick: (e, els) => { if (els.length) { const ind = indData[els[0].index][0]; openIndustryDetail(ind); } }, plugins: { legend: { display: true, position: 'bottom', labels: { padding: 14, usePointStyle: true, pointStyle: 'circle', font: { size: 11 } } } } });
 
   // Type bar
   const typeData = count(data, 'Account_Type').slice(0,10);
@@ -427,6 +467,161 @@ function render() {
   renderKPIs();
   renderCharts(filtered);
   renderTable(filtered);
+}
+
+function closeDetail() {
+  document.getElementById('detail-overlay').classList.remove('open');
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDetail(); });
+
+function openIndustryDetail(ind) {
+  const records = getFiltered().filter(r => r.Industry === ind);
+  const total = records.length;
+  const withEmp = records.filter(r => r.Number_of_Employees > 0);
+  const totalEmp = records.reduce((s,r) => s + (r.Number_of_Employees||0), 0);
+  const totalElig = records.reduce((s,r) => s + (r.Eligible_Count||0), 0);
+  const uniqueStates = new Set(records.map(r=>r.Billing_State).filter(Boolean));
+
+  // Breakdowns
+  const stateCount = {};
+  records.forEach(r => { const s = r.Billing_State||'(blank)'; stateCount[s]=(stateCount[s]||0)+1; });
+  const topStates = Object.entries(stateCount).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const maxState = topStates[0]?.[1]||1;
+
+  const typeCount = {};
+  records.forEach(r => { const t = r.Account_Type||'(blank)'; typeCount[t]=(typeCount[t]||0)+1; });
+  const topTypes = Object.entries(typeCount).sort((a,b)=>b[1]-a[1]);
+  const maxType = topTypes[0]?.[1]||1;
+
+  const ownerCount = {};
+  records.forEach(r => { const o = r.Owner||'(blank)'; ownerCount[o]=(ownerCount[o]||0)+1; });
+  const topOwners = Object.entries(ownerCount).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const maxOwner = topOwners[0]?.[1]||1;
+
+  // Top accounts by eligible count or employee count
+  const topAccts = [...records].sort((a,b) => (b.Eligible_Count||0)-(a.Eligible_Count||0) || (b.Number_of_Employees||0)-(a.Number_of_Employees||0)).slice(0,15);
+
+  const color = COLORS[ind] || '#171C73';
+
+  const panel = document.getElementById('detail-panel');
+  panel.innerHTML = `
+    <div class="dp-header">
+      <button class="dp-close" onclick="closeDetail()">&times;</button>
+      <div class="dp-title">${ind}</div>
+      <div class="dp-subtitle">${total.toLocaleString()} accounts (filtered view)</div>
+    </div>
+    <div class="dp-body">
+      <div class="dp-stats">
+        <div class="dp-stat"><div class="dp-stat-val">${total.toLocaleString()}</div><div class="dp-stat-lbl">Accounts</div></div>
+        <div class="dp-stat"><div class="dp-stat-val">${totalElig.toLocaleString()}</div><div class="dp-stat-lbl">Eligible</div></div>
+        <div class="dp-stat"><div class="dp-stat-val">${uniqueStates.size}</div><div class="dp-stat-lbl">States</div></div>
+      </div>
+
+      <div class="dp-section">
+        <div class="dp-section-title">Account Type Breakdown</div>
+        <ul class="dp-bar-list">
+          ${topTypes.map(([t,c]) => `<li class="dp-bar-item">
+            <span class="dp-bar-label" title="${t}">${t}</span>
+            <div class="dp-bar-track"><div class="dp-bar-fill" style="width:${c/maxType*100}%;background:${color};"></div></div>
+            <span class="dp-bar-count">${c}</span>
+          </li>`).join('')}
+        </ul>
+      </div>
+
+      <div class="dp-section">
+        <div class="dp-section-title">Top 10 States</div>
+        <ul class="dp-bar-list">
+          ${topStates.map(([s,c]) => `<li class="dp-bar-item">
+            <span class="dp-bar-label">${s}</span>
+            <div class="dp-bar-track"><div class="dp-bar-fill" style="width:${c/maxState*100}%;background:#720de3;"></div></div>
+            <span class="dp-bar-count">${c}</span>
+          </li>`).join('')}
+        </ul>
+      </div>
+
+      <div class="dp-section">
+        <div class="dp-section-title">Top Owners</div>
+        <ul class="dp-bar-list">
+          ${topOwners.map(([o,c]) => `<li class="dp-bar-item">
+            <span class="dp-bar-label">${o}</span>
+            <div class="dp-bar-track"><div class="dp-bar-fill" style="width:${c/maxOwner*100}%;background:#25b253;"></div></div>
+            <span class="dp-bar-count">${c}</span>
+          </li>`).join('')}
+        </ul>
+      </div>
+
+      <div class="dp-section">
+        <div class="dp-section-title">Top Accounts ${totalElig > 0 ? 'by Eligible Count' : 'by Employees'}</div>
+        <ul class="dp-acct-list">
+          ${topAccts.map(r => `<li class="dp-acct-item" onclick="event.stopPropagation();openAccountDetail(RAW_DATA.find(d=>d.Account_Name==='${r.Account_Name.replace(/'/g,"\\'")}'))">
+            <span class="dp-acct-name" title="${r.Account_Name}">${r.Account_Name}</span>
+            <span class="dp-acct-meta">${r.Eligible_Count ? r.Eligible_Count.toLocaleString()+' elig' : r.Number_of_Employees ? r.Number_of_Employees.toLocaleString()+' emp' : r.Billing_State||''}</span>
+          </li>`).join('')}
+        </ul>
+      </div>
+    </div>`;
+  document.getElementById('detail-overlay').classList.add('open');
+}
+
+function openAccountDetail(r) {
+  if (!r) return;
+  const color = COLORS[r.Industry] || '#171C73';
+  const panel = document.getElementById('detail-panel');
+  const fields = [
+    ['Industry', r.Industry],
+    ['Account Type', r.Account_Type],
+    ['State', r.Billing_State],
+    ['Owner', r.Owner],
+    ['Employees', r.Number_of_Employees ? r.Number_of_Employees.toLocaleString() : '—'],
+    ['Eligible Count', r.Eligible_Count ? r.Eligible_Count.toLocaleString() : '—'],
+    ['MH Account Type', r.Marquee_Account_Type || '—'],
+    ['Products', r.Products || '—'],
+    ['Lead Source', r.Lead_Source || '—'],
+    ['Effective Date', r.Effective_Date || '—'],
+    ['Contract Renewal', r.Contract_Renewal_Date || '—'],
+  ];
+
+  // Find similar accounts (same industry + state)
+  const similar = RAW_DATA.filter(d => d.Industry === r.Industry && d.Billing_State === r.Billing_State && d.Account_Name !== r.Account_Name).slice(0,8);
+
+  panel.innerHTML = `
+    <div class="dp-header" style="background:linear-gradient(135deg, ${color}, #720de3);">
+      <button class="dp-close" onclick="closeDetail()">&times;</button>
+      <div class="dp-title">${r.Account_Name}</div>
+      <div class="dp-subtitle">${r.Industry} &bull; ${r.Billing_State || 'No state'} &bull; ${r.Account_Type || 'No type'}</div>
+    </div>
+    <div class="dp-body">
+      <div class="dp-stats">
+        <div class="dp-stat"><div class="dp-stat-val">${r.Number_of_Employees ? r.Number_of_Employees.toLocaleString() : '—'}</div><div class="dp-stat-lbl">Employees</div></div>
+        <div class="dp-stat"><div class="dp-stat-val">${r.Eligible_Count ? r.Eligible_Count.toLocaleString() : '—'}</div><div class="dp-stat-lbl">Eligible</div></div>
+        <div class="dp-stat"><div class="dp-stat-val">${r.Contract_Renewal_Date || '—'}</div><div class="dp-stat-lbl">Renewal</div></div>
+      </div>
+
+      <div class="dp-section">
+        <div class="dp-section-title">Account Details</div>
+        <div class="dp-field-grid">
+          ${fields.map(([lbl,val]) => `<div class="dp-field">
+            <div class="dp-field-label">${lbl}</div>
+            <div class="dp-field-value">${val || '—'}</div>
+          </div>`).join('')}
+        </div>
+      </div>
+
+      ${similar.length ? `<div class="dp-section">
+        <div class="dp-section-title">Similar Accounts (${r.Industry} in ${r.Billing_State})</div>
+        <ul class="dp-acct-list">
+          ${similar.map(s => {
+            const safeName = s.Account_Name.replace(/'/g,"\\'");
+            const badgeCls = TYPE_BADGES[s.Account_Type] || 'badge-other';
+            return `<li class="dp-acct-item" style="cursor:pointer" onclick="openAccountDetail(RAW_DATA.find(d=>d.Account_Name==='${safeName}'))">
+              <span class="dp-acct-name" title="${s.Account_Name}">${s.Account_Name}</span>
+              <span class="dp-acct-meta">${s.Account_Type ? '<span class="badge '+badgeCls+'">'+s.Account_Type+'</span>' : ''}</span>
+            </li>`;
+          }).join('')}
+        </ul>
+      </div>` : ''}
+    </div>`;
+  document.getElementById('detail-overlay').classList.add('open');
 }
 
 function exportCSV() {
@@ -488,6 +683,12 @@ if (sessionStorage.getItem('industry_dash_auth') === 'true') {
   initDashboard();
 }
 </script>
+
+<div class="detail-overlay" id="detail-overlay">
+  <div class="detail-backdrop" onclick="closeDetail()"></div>
+  <div class="detail-panel" id="detail-panel"></div>
+</div>
+
 </div><!-- end dashboard-content -->
 </body>
 </html>
